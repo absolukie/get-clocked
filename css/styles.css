@@ -199,3 +199,7 @@ input[type=text]:focus{border-color:var(--acc);}
 /* mashup category tags */
 .otxt .osub{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin-top:2px;}
 .cs{font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin-left:6px;}
+
+/* touch polish: rapid taps never zoom, card drags never scroll the page */
+button{touch-action:manipulation;}
+.orow{touch-action:none;}

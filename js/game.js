@@ -112,17 +112,18 @@ GC.Game = (function () {
         row.appendChild(num); row.appendChild(grip); row.appendChild(txt); row.appendChild(ctl);
         wrap.appendChild(row);
         rows.push({ el: row, item: o.t });
-        attachDrag(row, grip, i);
+        attachDrag(row, i);
       });
     }
-    function attachDrag(row, grip, index) {
+    function attachDrag(row, index) {
       var drag = null;
-      grip.addEventListener("pointerdown", function (e) {
+      row.addEventListener("pointerdown", function (e) {
+        if (e.target && e.target.closest && e.target.closest(".octl")) return;
         e.preventDefault();
-        try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+        try { row.setPointerCapture(e.pointerId); } catch (err) {}
         drag = { pid: e.pointerId, startY: e.clientY, index: index, active: false, target: index, rowH: 0 };
       });
-      grip.addEventListener("pointermove", function (e) {
+      row.addEventListener("pointermove", function (e) {
         if (!drag || e.pointerId !== drag.pid) return;
         var dy = e.clientY - drag.startY;
         if (!drag.active) {
@@ -154,8 +155,8 @@ GC.Game = (function () {
         }
         drag = null;
       }
-      grip.addEventListener("pointerup", end);
-      grip.addEventListener("pointercancel", end);
+      row.addEventListener("pointerup", end);
+      row.addEventListener("pointercancel", end);
     }
     render();
     return { el: outer, get: function () { return order.map(function (o) { return o.t; }); } };
@@ -251,7 +252,11 @@ GC.Game = (function () {
       inp.type = "text"; inp.value = cur; inp.maxLength = 16;
       inp.className = "nmedit"; inp.setAttribute("aria-label", "edit player name");
       nm.textContent = ""; nm.appendChild(inp);
-      setTimeout(function () { inp.focus(); inp.select(); }, 30);
+      setTimeout(function () {
+        inp.focus();
+        /* cursor at the end, not selecting everything */
+        try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {}
+      }, 30);
       var done = false;
       function commit(ok) {
         if (done) return; done = true;
@@ -562,7 +567,7 @@ GC.Game = (function () {
       return d;
     }
     cmp.appendChild(col("✅ " + S.rankerName.toUpperCase() + "'S RANKING", S.actual));
-    cmp.appendChild(col("🎯 " + S.guesser.toUpperCase() + "'S CLOCK", S.guess, S.actual));
+    cmp.appendChild(col("🎯 " + S.guesser.toUpperCase() + "'S GUESS", S.guess, S.actual));
     el.appendChild(cmp);
 
     S.log.push({
