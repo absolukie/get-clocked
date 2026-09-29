@@ -31,18 +31,29 @@ GC.Game = (function () {
     return p;
   }
 
-  /* ---------- order widget: tap-free, arrow-driven ---------- */
+  /* ---------- order widget: drag handle + arrows ---------- */
   function orderList(items) {
     var order = GC.shuffle(items);
+    var outer = document.createElement("div");
     var wrap = document.createElement("div");
     wrap.className = "olist";
+    var hint = document.createElement("div");
+    hint.className = "kbd-hint";
+    hint.textContent = "Drag ⋮⋮ or tap ▲▼ to reorder";
+    outer.appendChild(wrap);
+    outer.appendChild(hint);
+    var rows = [];
     function render() {
       wrap.innerHTML = "";
+      rows = [];
       order.forEach(function (it, i) {
         var row = document.createElement("div");
         row.className = "orow";
         var num = document.createElement("div");
         num.className = "onum"; num.textContent = "#" + (i + 1);
+        var grip = document.createElement("div");
+        grip.className = "ogrip"; grip.textContent = "⋮⋮";
+        grip.setAttribute("aria-label", "drag to reorder");
         var txt = document.createElement("div");
         txt.className = "otxt"; txt.textContent = it;
         var ctl = document.createElement("div");
@@ -55,12 +66,56 @@ GC.Game = (function () {
         up.onclick = function () { GC.sfx.move(); var t = order[i - 1]; order[i - 1] = order[i]; order[i] = t; render(); };
         dn.onclick = function () { GC.sfx.move(); var t = order[i + 1]; order[i + 1] = order[i]; order[i] = t; render(); };
         ctl.appendChild(up); ctl.appendChild(dn);
-        row.appendChild(num); row.appendChild(txt); row.appendChild(ctl);
+        row.appendChild(num); row.appendChild(grip); row.appendChild(txt); row.appendChild(ctl);
         wrap.appendChild(row);
+        rows.push({ el: row, item: it });
+        attachDrag(row, grip, i);
       });
     }
+    function attachDrag(row, grip, index) {
+      var drag = null;
+      grip.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+        drag = { pid: e.pointerId, startY: e.clientY, index: index, active: false, target: index, rowH: 0 };
+      });
+      grip.addEventListener("pointermove", function (e) {
+        if (!drag || e.pointerId !== drag.pid) return;
+        var dy = e.clientY - drag.startY;
+        if (!drag.active) {
+          if (Math.abs(dy) < 10) return;
+          drag.active = true;
+          drag.rowH = row.offsetHeight + 8;
+          row.classList.add("dragging");
+        }
+        var target = Math.max(0, Math.min(order.length - 1, drag.index + Math.round(dy / drag.rowH)));
+        drag.target = target;
+        row.style.transform = "translateY(" + dy + "px)";
+        rows.forEach(function (r, i) {
+          if (r.el === row) return;
+          var shift = 0;
+          if (drag.index < target && i > drag.index && i <= target) shift = -drag.rowH;
+          else if (drag.index > target && i < drag.index && i >= target) shift = drag.rowH;
+          r.el.style.transform = shift ? "translateY(" + shift + "px)" : "";
+        });
+      });
+      function end(e) {
+        if (!drag || (e && e.pointerId !== drag.pid)) return;
+        if (drag.active) {
+          if (drag.target !== drag.index) {
+            var it = order.splice(drag.index, 1)[0];
+            order.splice(drag.target, 0, it);
+            GC.sfx.move();
+          }
+          render();
+        }
+        drag = null;
+      }
+      grip.addEventListener("pointerup", end);
+      grip.addEventListener("pointercancel", end);
+    }
     render();
-    return { el: wrap, get: function () { return order.slice(); } };
+    return { el: outer, get: function () { return order.slice(); } };
   }
 
   function stepBadge(n, label) {
@@ -106,7 +161,7 @@ GC.Game = (function () {
     el.appendChild(GC.ui.header("How to play", "Three steps. Zero mercy."));
     var steps = [
       ["🥇", "RANK IT", "One player secretly orders 5 items from #1 (most) to #5 (least), then locks it in."],
-      ["📲", "PASS IT", "Hand the phone over. The ranker looks away — no peeking."],
+      ["📲", "PASS IT", "Hand the phone over. Everyone can watch the guesser work."],
       ["🕐", "CLOCK IT", "The next player reconstructs the exact ranking. Every exact position hit scores a point. 5/5? FULLY CLOCKED."]
     ];
     steps.forEach(function (s) {
@@ -210,26 +265,63 @@ GC.Game = (function () {
     var count = document.createElement("div");
     count.className = "catcount";
     function save() { GC.store.set("catsel", sel); }
+
+    var sections = GC.SECTIONS.slice();
+    if (GC.settings.spicy) sections = sections.concat([{ name: "Spicy", cats: ["Spicy"] }]);
+
+    var chipEls = {};
+    var secWrap = document.createElement("div");
+    sections.forEach(function (sec) {
+      var box = document.createElement("div");
+      box.className = "catsec";
+      var head = document.createElement("div");
+      head.className = "catsec-head";
+      var nm = document.createElement("span");
+      nm.className = "catsec-name"; nm.textContent = sec.name;
+      var allb = document.createElement("button");
+      allb.className = "btn ghost small"; allb.textContent = "All";
+      allb.onclick = function () {
+        GC.sfx.tap();
+        sec.cats.forEach(function (c) { if (sel.indexOf(c) < 0) sel.push(c); });
+        save(); refresh();
+      };
+      var noneb = document.createElement("button");
+      noneb.className = "btn ghost small"; noneb.textContent = "None";
+      noneb.onclick = function () {
+        GC.sfx.tap();
+        sel = sel.filter(function (c) { return sec.cats.indexOf(c) < 0; });
+        save(); refresh();
+      };
+      head.appendChild(nm); head.appendChild(allb); head.appendChild(noneb);
+      box.appendChild(head);
+      var sgrid = document.createElement("div");
+      sgrid.className = "cats";
+      sec.cats.forEach(function (c) {
+        var ch = document.createElement("button");
+        ch.className = "chip" + (c === "Spicy" ? " spicy" : "");
+        ch.dataset.c = c;
+        ch.onclick = function () {
+          GC.sfx.tap();
+          var i = sel.indexOf(c);
+          if (i >= 0) sel.splice(i, 1); else sel.push(c);
+          save(); refresh();
+        };
+        chipEls[c] = ch;
+        sgrid.appendChild(ch);
+      });
+      box.appendChild(sgrid);
+      secWrap.appendChild(box);
+    });
+
     function refresh() {
-      Array.prototype.forEach.call(grid.children, function (ch) {
-        var on = sel.indexOf(ch.dataset.c) >= 0;
+      Object.keys(chipEls).forEach(function (c) {
+        var ch = chipEls[c];
+        var on = sel.indexOf(c) >= 0;
         ch.classList.toggle("sel", on);
-        ch.innerHTML = (on ? "✓ " : "") + GC.esc(ch.dataset.c);
+        ch.innerHTML = (on ? "✓ " : "") + GC.esc(c);
       });
       count.textContent = sel.length + " CATEGORIES SELECTED";
     }
-    cats.forEach(function (c) {
-      var ch = document.createElement("button");
-      ch.className = "chip" + (c === "Spicy" ? " spicy" : "");
-      ch.dataset.c = c;
-      ch.onclick = function () {
-        GC.sfx.tap();
-        var i = sel.indexOf(c);
-        if (i >= 0) sel.splice(i, 1); else sel.push(c);
-        save(); refresh();
-      };
-      grid.appendChild(ch);
-    });
 
     var row = document.createElement("div");
     row.className = "catbtns";
@@ -241,15 +333,34 @@ GC.Game = (function () {
     clear.onclick = function () { GC.sfx.tap(); sel = []; save(); refresh(); };
     var sur = document.createElement("button");
     sur.className = "btn ghost small"; sur.textContent = "🎲 Surprise Me";
-    sur.onclick = function () {
-      GC.sfx.pick();
-      sel = GC.shuffle(cats).slice(0, 5);
-      save(); refresh();
-      GC.toast("5 random categories 🎲");
-    };
     row.appendChild(all); row.appendChild(clear); row.appendChild(sur);
     el.appendChild(row);
-    el.appendChild(grid);
+
+    /* surprise stepper: appears after Surprise Me, adjusts how many it picks */
+    var surpriseN = 8;
+    var surrow = document.createElement("div");
+    surrow.className = "surrow";
+    surrow.style.display = "none";
+    var surlabel = document.createElement("span");
+    surlabel.className = "label";
+    var minus = document.createElement("button");
+    minus.className = "btn ghost small"; minus.textContent = "− Less";
+    var plus = document.createElement("button");
+    plus.className = "btn ghost small"; plus.textContent = "+ More";
+    function doSurprise(n) {
+      surpriseN = Math.max(4, Math.min(cats.length, n));
+      sel = GC.shuffle(cats).slice(0, surpriseN);
+      surlabel.textContent = "🎲 " + surpriseN + " surprise categories";
+      surrow.style.display = "flex";
+      save(); refresh();
+    }
+    sur.onclick = function () { GC.sfx.pick(); doSurprise(8); GC.toast(surpriseN + " random categories 🎲"); };
+    minus.onclick = function () { GC.sfx.tap(); doSurprise(surpriseN - 4); };
+    plus.onclick = function () { GC.sfx.tap(); doSurprise(surpriseN + 4); };
+    surrow.appendChild(surlabel); surrow.appendChild(minus); surrow.appendChild(plus);
+    el.appendChild(surrow);
+
+    el.appendChild(secWrap);
 
     var bar = document.createElement("div");
     bar.className = "stickybar";
@@ -290,9 +401,8 @@ GC.Game = (function () {
     el.appendChild(stepBadge(2, "PASS IT"));
     var d = document.createElement("div");
     d.className = "passhero";
-    d.innerHTML = '<div class="eye">👀</div>' +
-      '<div class="big">PASS<br>THE PHONE</div>' +
-      "<p>Don't let <b>" + GC.esc(ranker) + "</b> see.</p>";
+    d.innerHTML = '<div class="big">PASS<br>THE PHONE</div>' +
+      "<p>Hand it to the guesser — everyone can watch.</p>";
     el.appendChild(d);
     el.appendChild(btn("I'M READY", function () {
       GC.sfx.pick();

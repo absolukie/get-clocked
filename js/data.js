@@ -8,6 +8,18 @@ GC.CATS = ["Random","Food","Drinks","Fast Food","Snacks","Desserts","Travel","Va
 "TV","Video Games","Sports","Hobbies","School","Work","Fashion","Beauty","Shopping","Home","Animals",
 "Experiences","Bucket List","Embarrassing","Gross","Deep","Wholesome","Unhinged"];
 
+/* category sections for the select screen (Spicy gets its own when enabled) */
+GC.SECTIONS = [
+  { name: "Food & Drink", cats: ["Food","Drinks","Fast Food","Snacks","Desserts"] },
+  { name: "People", cats: ["Dating","Relationships","Couples","Friendship","Family","Personality","Pet Peeves"] },
+  { name: "Fun & Chaos", cats: ["Would You Rather","Hypotheticals","Chaos","Internet","Memes","Embarrassing","Gross","Unhinged"] },
+  { name: "Life", cats: ["Lifestyle","Money","School","Work","Fashion","Beauty","Shopping","Home"] },
+  { name: "Going Out", cats: ["Travel","Vacation","Cities","Experiences","Bucket List"] },
+  { name: "Entertainment", cats: ["Music","Movies","TV","Video Games","Sports","Hobbies"] },
+  { name: "Feels", cats: ["Nostalgia","Childhood","Deep","Wholesome"] },
+  { name: "Wildcards", cats: ["Random","Animals"] }
+];
+
 /* prompt: {c: category, q: question, items: [5 rankable items]} */
 GC.PROMPTS = [
 {c:"Random",q:"Things you'd grab in a fire (people and pets are safe)",items:["Phone","Laptop","Photo albums","Favorite hoodie","Wallet"]},
