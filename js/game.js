@@ -245,7 +245,7 @@ GC.Game = (function () {
       });
     }
     /* tap a name to edit it inline */
-    function editName(i, nm) {
+    function editName(i, nm, selectAll) {
       if (nm.querySelector("input")) return;
       var cur = players[i];
       var inp = document.createElement("input");
@@ -255,8 +255,12 @@ GC.Game = (function () {
       /* focus synchronously inside the tap: iOS only opens the keyboard
          (one tap total) when focus runs in the user-gesture task */
       inp.focus();
-      /* cursor at the end, not selecting everything */
-      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {}
+      /* freshly auto-added placeholders get fully selected so typing replaces
+         them; manual edits keep the cursor at the end */
+      try {
+        if (selectAll) inp.select();
+        else inp.setSelectionRange(inp.value.length, inp.value.length);
+      } catch (e) {}
       var done = false;
       function commit(ok) {
         if (done) return; done = true;
@@ -290,10 +294,20 @@ GC.Game = (function () {
     ab.className = "btn small"; ab.textContent = "＋ Add";
     function doAdd() {
       var v = inp.value.trim();
-      if (!v) return;
+      var auto = !v;
       if (players.length >= 8) { GC.toast("Max 8 players"); return; }
-      if (players.indexOf(v) >= 0) { GC.toast("Name's taken"); return; }
-      GC.sfx.pick(); players.push(v); inp.value = ""; save(); render(); inp.focus();
+      if (auto) {
+        /* empty add: Player 3, Player 4, ... skipping taken names */
+        var n = players.length + 1;
+        do { v = "Player " + n; n++; } while (players.indexOf(v) >= 0);
+      } else if (players.indexOf(v) >= 0) { GC.toast("Name's taken"); return; }
+      GC.sfx.pick(); players.push(v); inp.value = ""; save(); render();
+      if (auto) {
+        /* pop the new name open, fully selected, so typing replaces it */
+        var nms = list.querySelectorAll(".prow .nm");
+        var nmEl = nms[players.length - 1];
+        if (nmEl) editName(players.length - 1, nmEl, true);
+      } else inp.focus();
     }
     ab.onclick = doAdd;
     inp.onkeydown = function (e) { if (e.key === "Enter") doAdd(); };
