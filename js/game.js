@@ -26,14 +26,52 @@ GC.Game = (function () {
   function drawPrompt() {
     var avail = pool().filter(function (x) { return S.used.indexOf(x.id) < 0; });
     if (!avail.length) { S.used = []; avail = pool(); }
+    if (S.mashup) return drawMashup();
     var p = avail[Math.floor(Math.random() * avail.length)];
     S.used.push(p.id);
     return p;
   }
 
+  /* mashup: the five things to rank are pulled across categories,
+     so putting priorities in order is never confined to one category */
+  function drawMashup() {
+    var bag = [];
+    pool().forEach(function (pr) {
+      pr.items.forEach(function (it) { bag.push({ t: it, c: pr.c }); });
+    });
+    bag = GC.shuffle(bag);
+    function pick(distinctCats) {
+      var items = [], seenCat = {}, seenItem = {};
+      for (var i = 0; i < bag.length && items.length < 5; i++) {
+        var b = bag[i], key = "m:" + b.c + "|" + b.t;
+        if (seenItem[b.t] || S.used.indexOf(key) >= 0) continue;
+        if (distinctCats && seenCat[b.c]) continue;
+        seenCat[b.c] = 1; seenItem[b.t] = 1; items.push(b);
+      }
+      return items;
+    }
+    var items = pick(true);
+    if (items.length < 5) items = pick(false);
+    if (items.length < 5) {
+      /* mashup pool exhausted: forget mashup history and try once more */
+      S.used = S.used.filter(function (u) { return u.indexOf("m:") !== 0; });
+      items = pick(true);
+      if (items.length < 5) items = pick(false);
+    }
+    items.forEach(function (b) { S.used.push("m:" + b.c + "|" + b.t); });
+    return {
+      id: "m" + Date.now() + "" + Math.floor(Math.random() * 1e6),
+      c: "Mashup", q: "Rank these five things",
+      items: items.map(function (b) { return b.t; }),
+      cats: items.map(function (b) { return b.c; })
+    };
+  }
+
   /* ---------- order widget: drag handle + arrows ---------- */
-  function orderList(items) {
-    var order = GC.shuffle(items);
+  function orderList(items, subs) {
+    var order = GC.shuffle(items.map(function (it, i) {
+      return { t: it, s: subs ? subs[i] : null };
+    }));
     var outer = document.createElement("div");
     var wrap = document.createElement("div");
     wrap.className = "olist";
@@ -46,7 +84,7 @@ GC.Game = (function () {
     function render() {
       wrap.innerHTML = "";
       rows = [];
-      order.forEach(function (it, i) {
+      order.forEach(function (o, i) {
         var row = document.createElement("div");
         row.className = "orow";
         var num = document.createElement("div");
@@ -55,7 +93,12 @@ GC.Game = (function () {
         grip.className = "ogrip"; grip.textContent = "⋮⋮";
         grip.setAttribute("aria-label", "drag to reorder");
         var txt = document.createElement("div");
-        txt.className = "otxt"; txt.textContent = it;
+        txt.className = "otxt"; txt.textContent = o.t;
+        if (o.s) {
+          var sub = document.createElement("div");
+          sub.className = "osub"; sub.textContent = o.s;
+          txt.appendChild(sub);
+        }
         var ctl = document.createElement("div");
         ctl.className = "octl";
         var up = document.createElement("button");
@@ -68,7 +111,7 @@ GC.Game = (function () {
         ctl.appendChild(up); ctl.appendChild(dn);
         row.appendChild(num); row.appendChild(grip); row.appendChild(txt); row.appendChild(ctl);
         wrap.appendChild(row);
-        rows.push({ el: row, item: it });
+        rows.push({ el: row, item: o.t });
         attachDrag(row, grip, i);
       });
     }
@@ -115,7 +158,7 @@ GC.Game = (function () {
       grip.addEventListener("pointercancel", end);
     }
     render();
-    return { el: outer, get: function () { return order.slice(); } };
+    return { el: outer, get: function () { return order.map(function (o) { return o.t; }); } };
   }
 
   function stepBadge(n, label) {
@@ -128,7 +171,8 @@ GC.Game = (function () {
   function qcard(prompt) {
     var d = document.createElement("div");
     d.className = "qcard";
-    d.innerHTML = '<div class="qc">' + GC.esc(prompt.c.toUpperCase()) + "</div>" +
+    var tag = prompt.cats ? "🔀 MASHUP MIX" : GC.esc(prompt.c.toUpperCase());
+    d.innerHTML = '<div class="qc">' + tag + "</div>" +
       '<div class="qq">' + GC.esc(prompt.q) + "</div>" +
       '<div class="qh">#1 = most · #5 = least</div>';
     return d;
@@ -187,6 +231,8 @@ GC.Game = (function () {
         r.className = "prow";
         var nm = document.createElement("div");
         nm.className = "nm"; nm.textContent = (i + 1) + ". " + p;
+        nm.title = "Tap to edit";
+        nm.onclick = function () { editName(i, nm); };
         var x = document.createElement("button");
         x.className = "xbtn"; x.textContent = "✕"; x.setAttribute("aria-label", "remove player");
         x.onclick = function () {
@@ -197,9 +243,38 @@ GC.Game = (function () {
         list.appendChild(r);
       });
     }
+    /* tap a name to edit it inline */
+    function editName(i, nm) {
+      if (nm.querySelector("input")) return;
+      var cur = players[i];
+      var inp = document.createElement("input");
+      inp.type = "text"; inp.value = cur; inp.maxLength = 16;
+      inp.className = "nmedit"; inp.setAttribute("aria-label", "edit player name");
+      nm.textContent = ""; nm.appendChild(inp);
+      setTimeout(function () { inp.focus(); inp.select(); }, 30);
+      var done = false;
+      function commit(ok) {
+        if (done) return; done = true;
+        var v = inp.value.trim();
+        if (ok && v && v !== cur) {
+          if (players.indexOf(v) >= 0) GC.toast("Name's taken");
+          else { players[i] = v; GC.sfx.tap(); }
+        }
+        save(); render();
+      }
+      inp.onkeydown = function (e) {
+        if (e.key === "Enter") commit(true);
+        else if (e.key === "Escape") commit(false);
+      };
+      inp.onblur = function () { commit(true); };
+    }
     function save() { GC.store.set("players", players); }
     render();
     el.appendChild(list);
+    var nhint = document.createElement("div");
+    nhint.className = "kbd-hint";
+    nhint.textContent = "Tap a name to edit it · ✕ removes";
+    el.appendChild(nhint);
 
     var add = document.createElement("div");
     add.className = "rowline";
@@ -360,6 +435,24 @@ GC.Game = (function () {
     surrow.appendChild(surlabel); surrow.appendChild(minus); surrow.appendChild(plus);
     el.appendChild(surrow);
 
+    /* mashup: each round mixes its five items across categories */
+    var mash = GC.store.get("mashup", true);
+    var mrow = document.createElement("div");
+    mrow.className = "mashrow";
+    var mtog = document.createElement("button");
+    mtog.className = "chip big";
+    function paintMash() {
+      mtog.classList.toggle("sel", mash);
+      mtog.innerHTML = (mash ? "✓ " : "") + "🔀 Mashup rounds";
+    }
+    mtog.onclick = function () { GC.sfx.tap(); mash = !mash; GC.store.set("mashup", mash); paintMash(); };
+    var msub = document.createElement("div");
+    msub.className = "msub";
+    msub.textContent = "Each round pulls its five things from across your categories — ranking is never stuck inside one category.";
+    mrow.appendChild(mtog); mrow.appendChild(msub);
+    el.appendChild(mrow);
+    paintMash();
+
     el.appendChild(secWrap);
 
     var bar = document.createElement("div");
@@ -369,6 +462,7 @@ GC.Game = (function () {
       if (!sel.length) { GC.toast("Pick at least one category"); return; }
       GC.sfx.pick();
       S.cats = sel.slice();
+      S.mashup = mash;
       S.ranker = 0;
       GC.router.go("rank");
     }));
@@ -386,7 +480,7 @@ GC.Game = (function () {
     h.innerHTML = '<h1 style="margin-top:2px">' + GC.esc(ranker) + ", put these in <i>your</i> order.</h1>";
     el.appendChild(h);
     el.appendChild(qcard(prompt));
-    var ol = orderList(prompt.items);
+    var ol = orderList(prompt.items, prompt.cats);
     el.appendChild(ol.el);
     el.appendChild(btn("🔒 LOCK MY RANKING", function () {
       GC.sfx.pick();
@@ -421,7 +515,7 @@ GC.Game = (function () {
       GC.esc(ranker) + " ranked them.</p>";
     el.appendChild(h);
     el.appendChild(qcard(S.prompt));
-    var ol = orderList(S.prompt.items);
+    var ol = orderList(S.prompt.items, S.prompt.cats);
     el.appendChild(ol.el);
     el.appendChild(btn("🕐 CLOCK IT IN", function () {
       GC.sfx.reveal();
@@ -453,13 +547,16 @@ GC.Game = (function () {
 
     var cmp = document.createElement("div");
     cmp.className = "cmp";
+    var catOf = {};
+    if (S.prompt.cats) S.prompt.items.forEach(function (it, i) { catOf[it] = S.prompt.cats[i]; });
     function col(title, arr, ref) {
       var d = document.createElement("div");
       var html = "<h4>" + GC.esc(title) + "</h4><ul>";
       arr.forEach(function (it, i) {
         var ok = ref ? it === ref[i] : true;
+        var cs = catOf[it] ? ' <span class="cs">' + GC.esc(catOf[it]) + "</span>" : "";
         html += '<li class="' + (ok ? "ok" : "no") + '"><span>#' + (i + 1) + "</span><span>" +
-          GC.esc(it) + '</span><span class="mk">' + (ok ? "✓" : "✗") + "</span></li>";
+          GC.esc(it) + cs + '</span><span class="mk">' + (ok ? "✓" : "✗") + "</span></li>";
       });
       d.innerHTML = html + "</ul>";
       return d;
