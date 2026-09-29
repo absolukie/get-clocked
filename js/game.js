@@ -1,0 +1,514 @@
+/* GET CLOCKED — game flow: RANK IT → PASS IT → CLOCK IT */
+"use strict";
+var GC = window.GC || (window.GC = {});
+
+GC.Game = (function () {
+  /* assign stable ids to prompts */
+  GC.PROMPTS.forEach(function (p, i) { p.id = "p" + i; });
+  GC.SPICY.forEach(function (p, i) { p.id = "s" + i; });
+
+  var S = null; // session
+
+  function btn(text, fn, cls) {
+    var b = document.createElement("button");
+    b.className = cls || "btn primary block";
+    b.innerHTML = text;
+    b.onclick = function () { fn(); };
+    return b;
+  }
+
+  /* ---------- prompt pool ---------- */
+  function pool() {
+    var p = GC.PROMPTS.filter(function (x) { return S.cats.indexOf(x.c) >= 0; });
+    if (GC.settings.spicy && S.cats.indexOf("Spicy") >= 0) p = p.concat(GC.SPICY);
+    return p;
+  }
+  function drawPrompt() {
+    var avail = pool().filter(function (x) { return S.used.indexOf(x.id) < 0; });
+    if (!avail.length) { S.used = []; avail = pool(); }
+    var p = avail[Math.floor(Math.random() * avail.length)];
+    S.used.push(p.id);
+    return p;
+  }
+
+  /* ---------- order widget: tap-free, arrow-driven ---------- */
+  function orderList(items) {
+    var order = GC.shuffle(items);
+    var wrap = document.createElement("div");
+    wrap.className = "olist";
+    function render() {
+      wrap.innerHTML = "";
+      order.forEach(function (it, i) {
+        var row = document.createElement("div");
+        row.className = "orow";
+        var num = document.createElement("div");
+        num.className = "onum"; num.textContent = "#" + (i + 1);
+        var txt = document.createElement("div");
+        txt.className = "otxt"; txt.textContent = it;
+        var ctl = document.createElement("div");
+        ctl.className = "octl";
+        var up = document.createElement("button");
+        up.className = "obtn"; up.innerHTML = "▲"; up.setAttribute("aria-label", "move up");
+        var dn = document.createElement("button");
+        dn.className = "obtn"; dn.innerHTML = "▼"; dn.setAttribute("aria-label", "move down");
+        up.disabled = (i === 0); dn.disabled = (i === order.length - 1);
+        up.onclick = function () { GC.sfx.move(); var t = order[i - 1]; order[i - 1] = order[i]; order[i] = t; render(); };
+        dn.onclick = function () { GC.sfx.move(); var t = order[i + 1]; order[i + 1] = order[i]; order[i] = t; render(); };
+        ctl.appendChild(up); ctl.appendChild(dn);
+        row.appendChild(num); row.appendChild(txt); row.appendChild(ctl);
+        wrap.appendChild(row);
+      });
+    }
+    render();
+    return { el: wrap, get: function () { return order.slice(); } };
+  }
+
+  function stepBadge(n, label) {
+    var d = document.createElement("div");
+    d.className = "stepbadge s" + n;
+    d.textContent = "STEP " + n + " · " + label;
+    return d;
+  }
+
+  function qcard(prompt) {
+    var d = document.createElement("div");
+    d.className = "qcard";
+    d.innerHTML = '<div class="qc">' + GC.esc(prompt.c.toUpperCase()) + "</div>" +
+      '<div class="qq">' + GC.esc(prompt.q) + "</div>" +
+      '<div class="qh">#1 = most · #5 = least</div>';
+    return d;
+  }
+
+  /* ================= HOME ================= */
+  GC.router.on("home", function (el) {
+    var hero = document.createElement("div");
+    hero.className = "hero";
+    hero.innerHTML = '<div class="clock">🕐</div>' +
+      '<div class="title">GET<br>CLOCKED</div>' +
+      '<div class="tagline">Rank it. Pass it. <b>Clock it.</b></div>';
+    el.appendChild(hero);
+    var menu = document.createElement("div");
+    menu.className = "menu";
+    menu.appendChild(btn("▶&nbsp; PLAY", function () { GC.sfx.pick(); GC.router.go("setup"); }, "btn primary big"));
+    menu.appendChild(btn("📖 How to play", function () { GC.sfx.tap(); GC.router.go("howto"); }, "btn ghost"));
+    menu.appendChild(btn("🏆 History", function () { GC.sfx.tap(); GC.router.go("history"); }, "btn ghost"));
+    menu.appendChild(btn("⚙️ Settings", function () { GC.sfx.tap(); GC.router.go("settings"); }, "btn ghost"));
+    el.appendChild(menu);
+    var f = document.createElement("div");
+    f.className = "foot";
+    f.textContent = "One player ranks. Everyone else clocks.";
+    el.appendChild(f);
+  });
+
+  /* ================= HOW TO ================= */
+  GC.router.on("howto", function (el) {
+    el.appendChild(GC.ui.back("Home", "home"));
+    el.appendChild(GC.ui.header("How to play", "Three steps. Zero mercy."));
+    var steps = [
+      ["🥇", "RANK IT", "One player secretly orders 5 items from #1 (most) to #5 (least), then locks it in."],
+      ["📲", "PASS IT", "Hand the phone over. The ranker looks away — no peeking."],
+      ["🕐", "CLOCK IT", "The next player reconstructs the exact ranking. Every exact position hit scores a point. 5/5? FULLY CLOCKED."]
+    ];
+    steps.forEach(function (s) {
+      var d = document.createElement("div");
+      d.className = "howstep";
+      d.innerHTML = '<div class="n">' + s[0] + '</div><div><b>' + s[1] + "</b><p>" + s[2] + "</p></div>";
+      el.appendChild(d);
+    });
+    el.appendChild(btn("Got it — let's play", function () { GC.sfx.pick(); GC.router.go("setup"); }));
+  });
+
+  /* ================= SETUP (players + rounds) ================= */
+  GC.router.on("setup", function (el) {
+    el.appendChild(GC.ui.back("Home", "home"));
+    el.appendChild(GC.ui.header("Who's playing?", "Add 2–8 players. Pass-and-play, one phone."));
+    var players = GC.store.get("players", ["Player 1", "Player 2"]);
+    var list = document.createElement("div");
+    list.className = "plist";
+    function render() {
+      list.innerHTML = "";
+      players.forEach(function (p, i) {
+        var r = document.createElement("div");
+        r.className = "prow";
+        var nm = document.createElement("div");
+        nm.className = "nm"; nm.textContent = (i + 1) + ". " + p;
+        var x = document.createElement("button");
+        x.className = "xbtn"; x.textContent = "✕"; x.setAttribute("aria-label", "remove player");
+        x.onclick = function () {
+          if (players.length <= 2) { GC.toast("Need at least 2 players"); return; }
+          GC.sfx.tap(); players.splice(i, 1); save(); render();
+        };
+        r.appendChild(nm); r.appendChild(x);
+        list.appendChild(r);
+      });
+    }
+    function save() { GC.store.set("players", players); }
+    render();
+    el.appendChild(list);
+
+    var add = document.createElement("div");
+    add.className = "rowline";
+    var inp = document.createElement("input");
+    inp.type = "text"; inp.placeholder = "Player name"; inp.maxLength = 16;
+    inp.className = "grow";
+    var ab = document.createElement("button");
+    ab.className = "btn small"; ab.textContent = "＋ Add";
+    function doAdd() {
+      var v = inp.value.trim();
+      if (!v) return;
+      if (players.length >= 8) { GC.toast("Max 8 players"); return; }
+      if (players.indexOf(v) >= 0) { GC.toast("Name's taken"); return; }
+      GC.sfx.pick(); players.push(v); inp.value = ""; save(); render(); inp.focus();
+    }
+    ab.onclick = doAdd;
+    inp.onkeydown = function (e) { if (e.key === "Enter") doAdd(); };
+    add.appendChild(inp); add.appendChild(ab);
+    el.appendChild(add);
+
+    var rounds = GC.store.get("rounds", 5);
+    var f = document.createElement("div");
+    f.className = "field";
+    f.innerHTML = "<label>ROUNDS</label>";
+    f.appendChild(GC.ui.seg(
+      [{ t: "3", v: 3 }, { t: "5", v: 5 }, { t: "10", v: 10 }],
+      rounds,
+      function (v) { rounds = v; GC.store.set("rounds", v); }
+    ));
+    el.appendChild(f);
+
+    el.appendChild(btn("Continue →", function () {
+      if (players.length < 2) { GC.toast("Add at least 2 players"); return; }
+      GC.sfx.pick();
+      S = {
+        players: players.slice(), rounds: rounds, cats: null,
+        round: 0, scores: {}, used: [], log: []
+      };
+      players.forEach(function (p) { S.scores[p] = 0; });
+      GC.router.go("cats");
+    }));
+  });
+
+  /* ================= CATEGORIES ================= */
+  GC.router.on("cats", function (el) {
+    el.appendChild(GC.ui.back("Players", "setup"));
+    var h = document.createElement("div");
+    h.className = "ghead";
+    h.innerHTML = '<div class="logo-mini">🕐</div><h1>SELECT CATEGORIES</h1><p class="sub">Everything\'s on by default. Tap to remove what you don\'t want.</p>';
+    el.appendChild(h);
+
+    var cats = GC.CATS.slice();
+    if (GC.settings.spicy) cats.push("Spicy");
+
+    var stored = GC.store.get("catsel", null);
+    var sel;
+    if (stored === null) sel = GC.CATS.slice();
+    else sel = stored.filter(function (c) { return cats.indexOf(c) >= 0; });
+    if (!GC.settings.spicy) sel = sel.filter(function (c) { return c !== "Spicy"; });
+
+    var grid = document.createElement("div");
+    grid.className = "cats";
+    var count = document.createElement("div");
+    count.className = "catcount";
+    function save() { GC.store.set("catsel", sel); }
+    function refresh() {
+      Array.prototype.forEach.call(grid.children, function (ch) {
+        var on = sel.indexOf(ch.dataset.c) >= 0;
+        ch.classList.toggle("sel", on);
+        ch.innerHTML = (on ? "✓ " : "") + GC.esc(ch.dataset.c);
+      });
+      count.textContent = sel.length + " CATEGORIES SELECTED";
+    }
+    cats.forEach(function (c) {
+      var ch = document.createElement("button");
+      ch.className = "chip" + (c === "Spicy" ? " spicy" : "");
+      ch.dataset.c = c;
+      ch.onclick = function () {
+        GC.sfx.tap();
+        var i = sel.indexOf(c);
+        if (i >= 0) sel.splice(i, 1); else sel.push(c);
+        save(); refresh();
+      };
+      grid.appendChild(ch);
+    });
+
+    var row = document.createElement("div");
+    row.className = "catbtns";
+    var all = document.createElement("button");
+    all.className = "btn ghost small"; all.textContent = "Select All";
+    all.onclick = function () { GC.sfx.tap(); sel = cats.slice(); save(); refresh(); };
+    var clear = document.createElement("button");
+    clear.className = "btn ghost small"; clear.textContent = "Clear All";
+    clear.onclick = function () { GC.sfx.tap(); sel = []; save(); refresh(); };
+    var sur = document.createElement("button");
+    sur.className = "btn ghost small"; sur.textContent = "🎲 Surprise Me";
+    sur.onclick = function () {
+      GC.sfx.pick();
+      sel = GC.shuffle(cats).slice(0, 5);
+      save(); refresh();
+      GC.toast("5 random categories 🎲");
+    };
+    row.appendChild(all); row.appendChild(clear); row.appendChild(sur);
+    el.appendChild(row);
+    el.appendChild(grid);
+
+    var bar = document.createElement("div");
+    bar.className = "stickybar";
+    bar.appendChild(count);
+    bar.appendChild(btn("START GAME 🕐", function () {
+      if (!sel.length) { GC.toast("Pick at least one category"); return; }
+      GC.sfx.pick();
+      S.cats = sel.slice();
+      S.ranker = 0;
+      GC.router.go("rank");
+    }));
+    el.appendChild(bar);
+    refresh();
+  });
+
+  /* ================= RANK IT ================= */
+  GC.router.on("rank", function (el) {
+    var ranker = S.players[S.ranker % S.players.length];
+    var prompt = drawPrompt();
+    S.prompt = prompt;
+    el.appendChild(stepBadge(1, "RANK IT"));
+    var h = document.createElement("div");
+    h.innerHTML = '<h1 style="margin-top:2px">' + GC.esc(ranker) + ", put these in <i>your</i> order.</h1>";
+    el.appendChild(h);
+    el.appendChild(qcard(prompt));
+    var ol = orderList(prompt.items);
+    el.appendChild(ol.el);
+    el.appendChild(btn("🔒 LOCK MY RANKING", function () {
+      GC.sfx.pick();
+      S.actual = ol.get();
+      GC.router.go("pass");
+    }));
+  });
+
+  /* ================= PASS IT ================= */
+  GC.router.on("pass", function (el) {
+    var ranker = S.players[S.ranker % S.players.length];
+    el.appendChild(stepBadge(2, "PASS IT"));
+    var d = document.createElement("div");
+    d.className = "passhero";
+    d.innerHTML = '<div class="eye">👀</div>' +
+      '<div class="big">PASS<br>THE PHONE</div>' +
+      "<p>Don't let <b>" + GC.esc(ranker) + "</b> see.</p>";
+    el.appendChild(d);
+    el.appendChild(btn("I'M READY", function () {
+      GC.sfx.pick();
+      GC.router.go("clock");
+    }, "btn primary big block"));
+  });
+
+  /* ================= CLOCK IT ================= */
+  GC.router.on("clock", function (el) {
+    var ranker = S.players[S.ranker % S.players.length];
+    var guesser = S.players[(S.ranker + 1) % S.players.length];
+    el.appendChild(stepBadge(3, "CLOCK IT"));
+    var h = document.createElement("div");
+    h.innerHTML = '<h1 style="margin-top:2px">Can you clock ' + GC.esc(ranker) + "?</h1>" +
+      '<p class="sub">' + GC.esc(guesser) + ", arrange the five exactly how you think " +
+      GC.esc(ranker) + " ranked them.</p>";
+    el.appendChild(h);
+    el.appendChild(qcard(S.prompt));
+    var ol = orderList(S.prompt.items);
+    el.appendChild(ol.el);
+    el.appendChild(btn("🕐 CLOCK IT IN", function () {
+      GC.sfx.reveal();
+      S.guess = ol.get();
+      S.guesser = guesser;
+      S.rankerName = ranker;
+      var m = 0;
+      for (var i = 0; i < 5; i++) if (S.guess[i] === S.actual[i]) m++;
+      S.score = m;
+      S.scores[guesser] += m;
+      GC.router.go("reveal");
+    }));
+  });
+
+  /* ================= REVEAL ================= */
+  var VERDICTS = [
+    "YOU DO NOT KNOW THIS PERSON 💀", "BARELY CLOCKED", "KINDA CLOCKED",
+    "PRETTY CLOCKED", "YOU CLOCKED THEM", "FULLY CLOCKED"
+  ];
+  GC.router.on("reveal", function (el) {
+    var last = S.round === S.rounds - 1;
+    var sc = document.createElement("div");
+    sc.className = "bigscore";
+    sc.textContent = "0/5";
+    el.appendChild(sc);
+    var v = document.createElement("div");
+    v.className = "verdict";
+    el.appendChild(v);
+
+    var cmp = document.createElement("div");
+    cmp.className = "cmp";
+    function col(title, arr, ref) {
+      var d = document.createElement("div");
+      var html = "<h4>" + GC.esc(title) + "</h4><ul>";
+      arr.forEach(function (it, i) {
+        var ok = ref ? it === ref[i] : true;
+        html += '<li class="' + (ok ? "ok" : "no") + '"><span>#' + (i + 1) + "</span><span>" +
+          GC.esc(it) + '</span><span class="mk">' + (ok ? "✓" : "✗") + "</span></li>";
+      });
+      d.innerHTML = html + "</ul>";
+      return d;
+    }
+    cmp.appendChild(col("✅ " + S.rankerName.toUpperCase() + "'S RANKING", S.actual));
+    cmp.appendChild(col("🎯 " + S.guesser.toUpperCase() + "'S CLOCK", S.guess, S.actual));
+    el.appendChild(cmp);
+
+    S.log.push({
+      r: S.round + 1, ranker: S.rankerName, guesser: S.guesser,
+      q: S.prompt.q, score: S.score
+    });
+
+    /* count-up animation */
+    function finish() {
+      v.innerHTML = VERDICTS[target] + "<small>" + GC.esc(S.guesser) + " scores +" + target + "</small>";
+      if (target === 5) { GC.sfx.win(); GC.confetti(); }
+      else if (target >= 3) GC.sfx.pick();
+      else GC.sfx.bad();
+    }
+    var target = S.score;
+    if (!GC.settings.anim || target === 0) {
+      sc.textContent = target + "/5";
+      finish();
+    } else {
+      var n = 0;
+      var iv = setInterval(function () {
+        n++;
+        sc.textContent = n + "/5";
+        if (n >= target) { clearInterval(iv); finish(); }
+      }, 220);
+    }
+
+    el.appendChild(btn(last ? "SEE RESULTS 🏆" : "NEXT ROUND →", function () {
+      GC.sfx.pick();
+      S.round++;
+      if (last) GC.router.go("results");
+      else { S.ranker++; GC.router.go("rank"); }
+    }));
+  });
+
+  /* ================= RESULTS ================= */
+  GC.router.on("results", function (el) {
+    el.appendChild(GC.ui.header("Final scores", "Rank it. Pass it. Clock it."));
+    var order = S.players.slice().sort(function (a, b) { return S.scores[b] - S.scores[a]; });
+    var winner = order[0];
+    order.forEach(function (p, i) {
+      var r = document.createElement("div");
+      r.className = "brow" + (i === 0 ? " win" : "");
+      var medal = i === 0 ? "🏆" : (i === 1 ? "🥈" : (i === 2 ? "🥉" : (i + 1)));
+      r.innerHTML = '<div class="rk">' + medal + '</div><div class="nm">' + GC.esc(p) +
+        "</div>" + '<div class="pt">' + S.scores[p] + " pts</div>";
+      el.appendChild(r);
+    });
+
+    /* share card */
+    var lines = order.map(function (p) { return (p === winner ? "🏆 " : "") + p + ": " + S.scores[p] + " pts"; });
+    var card = document.createElement("div");
+    card.className = "sharecard";
+    card.innerHTML = '<div class="st">🕐 GET CLOCKED</div>' +
+      '<div class="ss">' + GC.esc(lines.join("\n")) + "\n\nRank it. Pass it. Clock it.</div>";
+    el.appendChild(card);
+    el.appendChild(btn("📋 Copy results", function () {
+      var txt = "🕐 GET CLOCKED — Rank it. Pass it. Clock it.\n" + lines.join("\n");
+      function done() { GC.toast("Copied 📋"); GC.sfx.pick(); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done, function () { fallback(); });
+      } else fallback();
+      function fallback() {
+        var ta = document.createElement("textarea");
+        ta.value = txt; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        ta.remove(); done();
+      }
+    }, "btn ghost block"));
+
+    /* save history */
+    var hist = GC.store.get("history", []);
+    hist.unshift({
+      d: Date.now(), players: S.players.slice(), scores: Object.assign({}, S.scores),
+      winner: winner, rounds: S.rounds
+    });
+    GC.store.set("history", hist.slice(0, 50));
+
+    var row = document.createElement("div");
+    row.className = "rowline";
+    row.style.marginTop = "10px";
+    var again = document.createElement("button");
+    again.className = "btn primary grow"; again.textContent = "🔁 Play again";
+    again.onclick = function () { GC.sfx.pick(); GC.router.go("setup"); };
+    var home = document.createElement("button");
+    home.className = "btn ghost"; home.textContent = "Home";
+    home.onclick = function () { GC.sfx.tap(); GC.router.go("home"); };
+    row.appendChild(again); row.appendChild(home);
+    el.appendChild(row);
+  });
+
+  /* ================= HISTORY ================= */
+  GC.router.on("history", function (el) {
+    el.appendChild(GC.ui.back("Home", "home"));
+    el.appendChild(GC.ui.header("Past games", "Your clocking record."));
+    var hist = GC.store.get("history", []);
+    if (!hist.length) {
+      var e = document.createElement("div");
+      e.className = "empty";
+      e.innerHTML = "No games yet.<br>Go clock someone. 🕐";
+      el.appendChild(e);
+      return;
+    }
+    hist.forEach(function (g) {
+      var d = document.createElement("div");
+      d.className = "hrow";
+      var when = new Date(g.d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      var sc = Object.keys(g.scores).sort(function (a, b) { return g.scores[b] - g.scores[a]; })
+        .map(function (p) { return p + " " + g.scores[p]; }).join(" · ");
+      d.innerHTML = '<div class="hd">🏆 ' + GC.esc(g.winner) + ' <span style="color:var(--mut);font-weight:400">· ' +
+        when + " · " + g.rounds + " rounds</span></div>" +
+        '<div class="hs">' + GC.esc(sc) + "</div>";
+      el.appendChild(d);
+    });
+    el.appendChild(btn("Clear history", function () {
+      if (confirm("Clear all past games?")) {
+        GC.store.del("history");
+        GC.sfx.tap();
+        GC.router.go("history");
+      }
+    }, "btn danger block"));
+  });
+
+  /* ================= SETTINGS ================= */
+  GC.router.on("settings", function (el) {
+    el.appendChild(GC.ui.back("Home", "home"));
+    el.appendChild(GC.ui.header("Settings", "Tune the game."));
+    el.appendChild(GC.ui.setrow("🌶️ Spicy categories",
+      "Adds the Spicy category chip. For grown-up game nights.",
+      GC.ui.toggle(GC.settings.spicy, function (v) { GC.settings.spicy = v; GC.saveSettings(); })));
+    el.appendChild(GC.ui.setrow("🔊 Sound FX",
+      "Tap blips, win fanfares, sad trombones.",
+      GC.ui.toggle(GC.settings.sound, function (v) { GC.settings.sound = v; GC.saveSettings(); })));
+    el.appendChild(GC.ui.setrow("✨ Animations",
+      "Transitions, confetti, score count-ups.",
+      GC.ui.toggle(GC.settings.anim, function (v) { GC.settings.anim = v; GC.saveSettings(); })));
+    var f = document.createElement("div");
+    f.className = "field";
+    f.innerHTML = "<label>THEME</label>";
+    f.appendChild(GC.ui.seg(
+      [{ t: "System", v: "system" }, { t: "Dark", v: "dark" }, { t: "Light", v: "light" }],
+      GC.settings.theme,
+      function (v) { GC.settings.theme = v; GC.saveSettings(); }
+    ));
+    el.appendChild(f);
+    el.appendChild(btn("Reset all data", function () {
+      if (confirm("Reset players, categories, history, and settings?")) {
+        Object.keys(localStorage).filter(function (k) { return k.indexOf("gc:") === 0; })
+          .forEach(function (k) { localStorage.removeItem(k); });
+        location.reload();
+      }
+    }, "btn danger block"));
+  });
+
+  GC.router.go("home");
+})();
