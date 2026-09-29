@@ -262,17 +262,22 @@ GC.Game = (function () {
         else inp.setSelectionRange(inp.value.length, inp.value.length);
       } catch (e) {}
       var done = false;
-      function commit(ok) {
+      function commit(ok, chain) {
         if (done) return; done = true;
         var v = inp.value.trim();
         if (ok && v && v !== cur) {
           if (players.indexOf(v) >= 0) GC.toast("Name's taken");
           else { players[i] = v; GC.sfx.tap(); }
         }
-        save(); render();
+        save();
+        if (chain) { autoAdd(); return; }
+        /* rename-only: restore this row's label without a full re-render,
+           so the tap that blurred this editor (another name, + Add, START)
+           still lands on a live element instead of a detached one */
+        nm.textContent = (i + 1) + ". " + players[i];
       }
       inp.onkeydown = function (e) {
-        if (e.key === "Enter") commit(true);
+        if (e.key === "Enter") commit(true, true);
         else if (e.key === "Escape") commit(false);
       };
       inp.onblur = function () { commit(true); };
@@ -282,7 +287,7 @@ GC.Game = (function () {
     el.appendChild(list);
     var nhint = document.createElement("div");
     nhint.className = "kbd-hint";
-    nhint.textContent = "Tap a name to edit it · ✕ removes";
+    nhint.textContent = "Tap a name to edit it · Enter adds the next player · ✕ removes";
     el.appendChild(nhint);
 
     var add = document.createElement("div");
@@ -292,22 +297,22 @@ GC.Game = (function () {
     inp.className = "grow";
     var ab = document.createElement("button");
     ab.className = "btn small"; ab.textContent = "＋ Add";
+    /* add the next auto-numbered player and pop its name open, fully selected */
+    function autoAdd() {
+      if (players.length >= 8) { GC.toast("Max 8 players"); return; }
+      var n = players.length + 1, v;
+      do { v = "Player " + n; n++; } while (players.indexOf(v) >= 0);
+      GC.sfx.pick(); players.push(v); save(); render();
+      var nms = list.querySelectorAll(".prow .nm");
+      var nmEl = nms[players.length - 1];
+      if (nmEl) editName(players.length - 1, nmEl, true);
+    }
     function doAdd() {
       var v = inp.value.trim();
-      var auto = !v;
       if (players.length >= 8) { GC.toast("Max 8 players"); return; }
-      if (auto) {
-        /* empty add: Player 3, Player 4, ... skipping taken names */
-        var n = players.length + 1;
-        do { v = "Player " + n; n++; } while (players.indexOf(v) >= 0);
-      } else if (players.indexOf(v) >= 0) { GC.toast("Name's taken"); return; }
-      GC.sfx.pick(); players.push(v); inp.value = ""; save(); render();
-      if (auto) {
-        /* pop the new name open, fully selected, so typing replaces it */
-        var nms = list.querySelectorAll(".prow .nm");
-        var nmEl = nms[players.length - 1];
-        if (nmEl) editName(players.length - 1, nmEl, true);
-      } else inp.focus();
+      if (!v) { inp.value = ""; autoAdd(); return; }
+      if (players.indexOf(v) >= 0) { GC.toast("Name's taken"); return; }
+      GC.sfx.pick(); players.push(v); inp.value = ""; save(); render(); inp.focus();
     }
     ab.onclick = doAdd;
     inp.onkeydown = function (e) { if (e.key === "Enter") doAdd(); };
