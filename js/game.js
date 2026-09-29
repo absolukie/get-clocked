@@ -252,11 +252,11 @@ GC.Game = (function () {
       inp.type = "text"; inp.value = cur; inp.maxLength = 16;
       inp.className = "nmedit"; inp.setAttribute("aria-label", "edit player name");
       nm.textContent = ""; nm.appendChild(inp);
-      setTimeout(function () {
-        inp.focus();
-        /* cursor at the end, not selecting everything */
-        try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {}
-      }, 30);
+      /* focus synchronously inside the tap: iOS only opens the keyboard
+         (one tap total) when focus runs in the user-gesture task */
+      inp.focus();
+      /* cursor at the end, not selecting everything */
+      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {}
       var done = false;
       function commit(ok) {
         if (done) return; done = true;
@@ -642,7 +642,7 @@ GC.Game = (function () {
     var hist = GC.store.get("history", []);
     hist.unshift({
       d: Date.now(), players: S.players.slice(), scores: Object.assign({}, S.scores),
-      winner: winner, rounds: S.rounds
+      winner: winner, rounds: S.rounds, log: S.log.slice()
     });
     GC.store.set("history", hist.slice(0, 50));
 
@@ -680,6 +680,18 @@ GC.Game = (function () {
       d.innerHTML = '<div class="hd">🏆 ' + GC.esc(g.winner) + ' <span style="color:var(--mut);font-weight:400">· ' +
         when + " · " + g.rounds + " rounds</span></div>" +
         '<div class="hs">' + GC.esc(sc) + "</div>";
+      /* every round of every player in this game */
+      var log = g.log || [];
+      if (log.length) {
+        var rh = '<div class="hrnds">';
+        log.forEach(function (r) {
+          rh += '<div class="hrnd"><span class="hrn">R' + r.r + "</span><span>" +
+            GC.esc(r.ranker) + " ranked · " + GC.esc(r.guesser) + " guessed" +
+            '</span><span class="hrs">' + r.score + "/5</span></div>";
+          if (r.q) rh += '<div class="hrq">' + GC.esc(r.q) + "</div>";
+        });
+        d.innerHTML += rh + "</div>";
+      }
       el.appendChild(d);
     });
     el.appendChild(btn("Clear history", function () {

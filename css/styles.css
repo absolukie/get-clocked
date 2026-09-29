@@ -153,6 +153,12 @@ input[type=text]:focus{border-color:var(--acc);}
 .hrow{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin:8px 0;}
 .hrow .hd{font-weight:800;font-size:15px;}
 .hrow .hs{color:var(--mut);font-size:13px;margin-top:3px;line-height:1.5;}
+.hrnds{margin-top:8px;border-top:1px dashed var(--line);padding-top:7px;display:flex;flex-direction:column;}
+.hrnd{display:flex;gap:8px;align-items:baseline;font-size:13px;padding:2px 0;}
+.hrn{font-weight:900;color:var(--acc);min-width:26px;}
+.hrnd .hrs{margin-left:auto;font-weight:800;white-space:nowrap;}
+.hrq{color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  padding-left:34px;margin-bottom:4px;}
 .empty{text-align:center;color:var(--mut);padding:34px 10px;font-size:15px;line-height:1.6;}
 
 /* howto */
@@ -200,6 +206,7 @@ input[type=text]:focus{border-color:var(--acc);}
 .otxt .osub{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin-top:2px;}
 .cs{font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin-left:6px;}
 
-/* touch polish: rapid taps never zoom, card drags never scroll the page */
+/* touch polish: rapid taps never zoom, card drags never scroll the page.
+   The right gutter gives thumbs a place to scroll without grabbing a card. */
 button{touch-action:manipulation;}
-.orow{touch-action:none;}
+.orow{touch-action:none;margin-right:14px;}
