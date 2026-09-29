@@ -87,6 +87,9 @@ input[type=text]:focus{border-color:var(--acc);}
 .chip:active{transform:scale(.95);}
 .chip.sel{background:var(--acc);border-color:var(--acc);color:var(--acc-ink);}
 .chip.spicy.sel{background:var(--pink);border-color:var(--pink);color:#fff;}
+/* checkmark always reserves its space: selecting never changes chip size */
+.chip .ck{display:inline-block;min-width:1em;}
+.chip:not(.sel) .ck{visibility:hidden;}
 .catcount{text-align:center;color:var(--mut);font-weight:800;letter-spacing:1.5px;font-size:13px;margin:12px 0;}
 .stickybar{position:sticky;bottom:calc(12px + env(safe-area-inset-bottom));background:var(--bg2);
   border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:var(--shadow);}

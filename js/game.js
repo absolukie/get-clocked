@@ -398,7 +398,7 @@ GC.Game = (function () {
         var ch = chipEls[c];
         var on = sel.indexOf(c) >= 0;
         ch.classList.toggle("sel", on);
-        ch.innerHTML = (on ? "✓ " : "") + GC.esc(c);
+        ch.innerHTML = '<span class="ck">✓</span> ' + GC.esc(c);
       });
       count.textContent = sel.length + " CATEGORIES SELECTED";
     }
@@ -448,7 +448,7 @@ GC.Game = (function () {
     mtog.className = "chip big";
     function paintMash() {
       mtog.classList.toggle("sel", mash);
-      mtog.innerHTML = (mash ? "✓ " : "") + "🔀 Mashup rounds";
+      mtog.innerHTML = '<span class="ck">✓</span> 🔀 Mashup rounds';
     }
     mtog.onclick = function () { GC.sfx.tap(); mash = !mash; GC.store.set("mashup", mash); paintMash(); };
     var msub = document.createElement("div");
