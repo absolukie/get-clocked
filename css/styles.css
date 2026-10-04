@@ -213,3 +213,20 @@ input[type=text]:focus{border-color:var(--acc);}
    The right gutter gives thumbs a place to scroll without grabbing a card. */
 button{touch-action:manipulation;}
 .orow{touch-action:none;margin-right:14px;}
+
+/* ---------- house ads ---------- */
+.adslot:empty{display:none;}
+.housead{position:relative;display:flex;align-items:center;gap:12px;background:var(--card);
+  border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:16px 0 4px;
+  text-decoration:none;color:inherit;touch-action:manipulation;}
+.housead-e{font-size:30px;line-height:1;}
+.housead-t{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
+.housead-t b{font-size:15px;}
+.housead-t i{font-style:normal;color:var(--mut);font-size:12.5px;line-height:1.35;}
+.housead-go{font-size:13px;font-weight:800;color:var(--acc);white-space:nowrap;}
+.housead-lab{position:absolute;top:-9px;right:10px;background:var(--bg2);border:1px solid var(--line);
+  color:var(--mut);font-size:10px;padding:1px 7px;border-radius:999px;letter-spacing:.4px;}
+.admodal{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.62);display:flex;
+  align-items:center;justify-content:center;padding:24px;}
+.admodal-card{width:100%;max-width:360px;}
+.admodal-card .housead{margin:0 0 12px;}

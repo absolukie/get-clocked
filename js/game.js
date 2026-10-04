@@ -194,6 +194,11 @@ GC.Game = (function () {
     menu.appendChild(btn("🏆 History", function () { GC.sfx.tap(); GC.router.go("history"); }, "btn ghost"));
     menu.appendChild(btn("⚙️ Settings", function () { GC.sfx.tap(); GC.router.go("settings"); }, "btn ghost"));
     el.appendChild(menu);
+    /* ad banner slot (menu screens only, never during a round) */
+    var adslot = document.createElement("div");
+    adslot.className = "adslot";
+    el.appendChild(adslot);
+    if (window.BoyGames && window.BoyGames.ads) window.BoyGames.ads.showBanner(adslot);
     var f = document.createElement("div");
     f.className = "foot";
     f.textContent = "One player ranks. Everyone else clocks.";
@@ -616,6 +621,8 @@ GC.Game = (function () {
 
     el.appendChild(btn(last ? "SEE RESULTS 🏆" : "NEXT ROUND →", function () {
       GC.sfx.pick();
+      /* between-rounds interstitial (capped, never mid-round, skipped for owners) */
+      if (window.BoyGames && window.BoyGames.ads) window.BoyGames.ads.maybeInterstitial("between-rounds");
       S.round++;
       if (last) GC.router.go("results");
       else { S.ranker++; GC.router.go("rank"); }
@@ -744,6 +751,66 @@ GC.Game = (function () {
       function (v) { GC.settings.theme = v; GC.saveSettings(); }
     ));
     el.appendChild(f);
+
+    /* ---------- Remove Ads (only shown when ads are enabled and not owned) ---------- */
+    (function () {
+      var BGW = window.BoyGames;
+      if (!BGW || !BGW.ads || !BGW.ads.isEnabled()) return;
+      var status = document.createElement("div");
+      status.className = "setdesc";
+      status.textContent = "";
+      var buy = document.createElement("button");
+      buy.className = "btn primary small";
+      buy.textContent = "Remove Ads";
+      buy.onclick = function () {
+        GC.sfx.tap();
+        buy.disabled = true;
+        var label = buy.textContent;
+        buy.textContent = "…";
+        BGW.store.purchase(BGW.store.PRODUCT_REMOVE_ADS).then(function (r) {
+          if (r && r.owned) {
+            status.textContent = "✓ Ads removed. Thanks for supporting the game!";
+            buy.style.display = "none";
+            GC.toast("✓ Ads removed");
+          } else {
+            buy.disabled = false;
+            buy.textContent = label;
+            GC.toast("Purchase cancelled");
+          }
+        });
+      };
+      var ctl = document.createElement("div");
+      ctl.style.cssText = "display:flex;flex-direction:column;gap:6px;align-items:flex-end;max-width:46%;";
+      ctl.appendChild(buy);
+      ctl.appendChild(status);
+      el.appendChild(GC.ui.setrow("🚫 Remove Ads",
+        "One-time purchase. No banners, no pop-ups, ever.", ctl));
+      /* localized price from the store (web fallback: $2.99) */
+      BGW.store.getProducts().then(function (ps) {
+        (ps || []).forEach(function (p) {
+          if (p.id === BGW.store.PRODUCT_REMOVE_ADS && p.price)
+            buy.textContent = "Remove Ads — " + p.price;
+        });
+      });
+      var rl = document.createElement("button");
+      rl.className = "btn ghost small";
+      rl.style.cssText = "align-self:flex-end;margin-top:-6px;";
+      rl.textContent = "Restore purchases";
+      rl.onclick = function () {
+        GC.sfx.tap();
+        BGW.store.restore().then(function (r) {
+          var ids = (r && r.ownedIds) || [];
+          if (ids.indexOf(BGW.store.PRODUCT_REMOVE_ADS) >= 0) {
+            GC.router.go("settings"); /* re-render: the row hides itself */
+            GC.toast("✓ Purchases restored");
+          } else {
+            GC.toast("No purchases found");
+          }
+        });
+      };
+      el.appendChild(rl);
+    })();
+
     el.appendChild(btn("Reset all data", function () {
       if (confirm("Reset players, categories, history, and settings?")) {
         Object.keys(localStorage).filter(function (k) { return k.indexOf("gc:") === 0; })
@@ -752,6 +819,19 @@ GC.Game = (function () {
       }
     }, "btn danger block"));
   });
+
+  /* ads: mark active gameplay (rank/pass/clock) so interstitials never
+     fire mid-round; reveal/results/menus are fair game */
+  (function () {
+    var BGW = window.BoyGames;
+    if (!BGW || !BGW.ads) return;
+    var ACTIVE = { rank: 1, pass: 1, clock: 1 };
+    var go = GC.router.go;
+    GC.router.go = function (name, arg) {
+      BGW.ads.setGameplayActive(!!ACTIVE[name]);
+      return go(name, arg);
+    };
+  })();
 
   GC.router.go("home");
 })();
