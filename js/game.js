@@ -752,6 +752,17 @@ GC.Game = (function () {
     ));
     el.appendChild(f);
 
+    /* ---------- Privacy Policy ---------- */
+    (function () {
+      var b = document.createElement("button");
+      b.className = "btn ghost small";
+      b.textContent = "Open →";
+      b.onclick = function () { GC.sfx.tap(); window.open("privacy.html", "_blank", "noopener"); };
+      el.appendChild(GC.ui.setrow("🔒 Privacy Policy",
+        "What the game stores, on your device and nowhere else.",
+        b));
+    })();
+
     /* ---------- Remove Ads (only shown when ads are enabled and not owned) ---------- */
     (function () {
       var BGW = window.BoyGames;
