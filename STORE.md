@@ -68,3 +68,21 @@ Notes:
   nothing to remove.
 - Row shows the localized price from `getProducts()`, tap → `purchase()` → "✓ Ads removed".
 - A "Restore purchases" link sits under the row.
+
+## Native haptics (app wrapper only)
+
+`window.BoyGamesNative.haptics`, injected by the native wrapper alongside
+`store` / `ads` (see the get-clocked-native repo README):
+
+```js
+window.BoyGamesNative.haptics = {
+  impact: function (style) {},       // "light" | "medium" | "heavy"
+  notification: function (type) {}   // "success" | "warning" | "error"
+};
+```
+
+Web-side calls live in `js/haptics.js` (`window.BoyGames.haptics`) — every
+method no-ops when no native bridge is present, so web behavior is unchanged.
+Hooked into: every button tap (via `GC.sfx.tap/pick/move`), round
+transitions (`sfx.reveal` + the NEXT ROUND button), and the reveal verdict
+(`sfx.win` → success, `sfx.bad` → error).

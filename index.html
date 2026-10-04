@@ -15,7 +15,17 @@
 <script src="js/data.js"></script>
 <script src="js/store.js"></script>
 <script src="js/ads.js"></script>
+<script src="js/haptics.js"></script>
 <script src="js/app.js"></script>
 <script src="js/game.js"></script>
+<script>
+/* Offline shell: cache the app so pass-and-play works with no connection.
+ * Guarded — plain http(s) only, so the Capacitor wrapper and file:// are unaffected. */
+if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () { /* offline is best-effort */ });
+  });
+}
+</script>
 </body>
 </html>

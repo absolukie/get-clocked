@@ -621,6 +621,8 @@ GC.Game = (function () {
 
     el.appendChild(btn(last ? "SEE RESULTS 🏆" : "NEXT ROUND →", function () {
       GC.sfx.pick();
+      /* round transition: a firmer native tap (no-op on web) */
+      if (window.BoyGames && window.BoyGames.haptics) window.BoyGames.haptics.impact("medium");
       /* between-rounds interstitial (capped, never mid-round, skipped for owners) */
       if (window.BoyGames && window.BoyGames.ads) window.BoyGames.ads.maybeInterstitial("between-rounds");
       S.round++;

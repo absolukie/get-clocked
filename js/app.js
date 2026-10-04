@@ -61,13 +61,20 @@ GC.sfx = (function () {
   function seq(notes, gap, type, v) {
     notes.forEach(function (f, i) { setTimeout(function () { tone(f, 0.16, type, v); }, i * (gap || 100)); });
   }
+  /* native haptics: forwarded to the app wrapper when present, no-op on web */
+  function hap(kind, arg) {
+    try {
+      var h = window.BoyGames && window.BoyGames.haptics;
+      if (h && typeof h[kind] === "function") h[kind](arg);
+    } catch (e) {}
+  }
   return {
-    tap: function () { tone(620, 0.06, "sine", 0.07); },
-    move: function () { tone(440, 0.05, "triangle", 0.06); },
-    pick: function () { seq([520, 780], 70); },
-    reveal: function () { seq([392, 523, 659], 90); },
-    win: function () { seq([523, 659, 784, 1047], 110, "sine", 0.12); },
-    bad: function () { tone(180, 0.3, "sawtooth", 0.07); }
+    tap: function () { hap("impact", "light"); tone(620, 0.06, "sine", 0.07); },
+    move: function () { hap("impact", "light"); tone(440, 0.05, "triangle", 0.06); },
+    pick: function () { hap("impact", "light"); seq([520, 780], 70); },
+    reveal: function () { hap("impact", "medium"); seq([392, 523, 659], 90); },
+    win: function () { hap("notification", "success"); seq([523, 659, 784, 1047], 110, "sine", 0.12); },
+    bad: function () { hap("notification", "error"); tone(180, 0.3, "sawtooth", 0.07); }
   };
 })();
 
